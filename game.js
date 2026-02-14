@@ -127,19 +127,20 @@ function isBlackjack(cards) {
 
 // Check có 2 quân A hay không
 function hasTwoAces(cards) {
-    if (cards.length !== 2) return false;
-    const ranks = cards.map(card => card.split('-')[0]);
-    return ranks[0] === 'A' && ranks[1] === 'A';
+    if (!cards || cards.length !== 2) return false;
+    return cards[0].rank === 'A' && cards[1].rank === 'A';
 }
 
 // Check Ngũ Linh (5 lá không quá 21)
 function isFiveCardCharlie(cards) {
-    return cards.length === 5 && calculateHand(cards) <= 21;
+    if (!cards || cards.length !== 5) return false;
+    return calculateHand(cards) <= 21;
 }
 
 // Check Ngũ Linh hoàn hảo (5 lá đúng 21)
 function isPerfectFive(cards) {
-    return cards.length === 5 && calculateHand(cards) === 21;
+    if (!cards || cards.length !== 5) return false;
+    return calculateHand(cards) === 21;
 }
 
 // Hàm tạo room ID
