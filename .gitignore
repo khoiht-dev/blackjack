@@ -1,5 +1,5 @@
-# Firebase Credentials - KHÔNG commit file này
-firebase-credentials.js
+# Firebase Credentials - OK to commit (public key for web apps)
+# Bảo mật thông qua Firestore Rules, không phải che giấu key
 
 # Node modules (nếu sau này dùng build tools)
 node_modules/

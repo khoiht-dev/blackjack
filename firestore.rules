@@ -1,0 +1,60 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper functions
+    function isValidRoom(room) {
+      return room.keys().hasAll(['roomCode', 'players', 'status', 'dealerRounds', 'currentRound', 'baseBet', 'createdAt'])
+        && room.roomCode is string
+        && room.roomCode.size() == 6
+        && room.players is list
+        && room.players.size() >= 1
+        && room.players.size() <= 5
+        && room.status in ['waiting', 'playing', 'finished']
+        && room.dealerRounds is int
+        && room.dealerRounds >= 1
+        && room.currentRound is int
+        && room.currentRound >= 0
+        && room.baseBet is int
+        && room.baseBet >= 10;
+    }
+    
+    function isValidPlayer(player) {
+      return player.keys().hasAll(['id', 'name', 'chips'])
+        && player.id is string
+        && player.name is string
+        && player.name.size() >= 1
+        && player.name.size() <= 20
+        && player.chips is int
+        && player.chips >= 0;
+    }
+    
+    // Rooms collection rules
+    match /rooms/{roomId} {
+      // Cho phép đọc room nếu user biết roomId
+      allow read: if true;
+      
+      // Cho phép tạo room mới với dữ liệu hợp lệ
+      allow create: if isValidRoom(request.resource.data)
+        && request.resource.data.players.size() == 1
+        && isValidPlayer(request.resource.data.players[0]);
+      
+      // Cho phép update room với các điều kiện:
+      // 1. Không thay đổi dealerRounds và baseBet sau khi tạo
+      // 2. Không có quá 5 players
+      // 3. Các players phải hợp lệ
+      allow update: if request.resource.data.dealerRounds == resource.data.dealerRounds
+        && request.resource.data.baseBet == resource.data.baseBet
+        && request.resource.data.players.size() >= 1
+        && request.resource.data.players.size() <= 5;
+      
+      // Cho phép xóa room sau 24 giờ không hoạt động
+      allow delete: if request.time > resource.data.createdAt + duration.value(24, 'h');
+    }
+    
+    // Block tất cả các collection khác
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
