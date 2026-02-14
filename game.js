@@ -11,7 +11,7 @@ let currentRoom = {
 };
 
 let unsubscribeRoom = null;
-const MAX_PLAYERS = 5;
+const MAX_PLAYERS = 10;
 let autoStandTimeout = null; // Timeout để tự động Stand khi bust
 
 // Load settings từ localStorage khi trang load

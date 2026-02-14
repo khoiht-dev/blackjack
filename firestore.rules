@@ -9,7 +9,7 @@ service cloud.firestore {
         && room.roomCode.size() == 6
         && room.players is list
         && room.players.size() >= 1
-        && room.players.size() <= 5
+        && room.players.size() <= 10
         && room.status in ['waiting', 'playing', 'finished']
         && room.dealerRounds is int
         && room.dealerRounds >= 1
@@ -41,12 +41,12 @@ service cloud.firestore {
       
       // Cho phép update room với các điều kiện:
       // 1. Không thay đổi dealerRounds và baseBet sau khi tạo
-      // 2. Không có quá 5 players
+      // 2. Không có quá 10 players
       // 3. Các players phải hợp lệ
       allow update: if request.resource.data.dealerRounds == resource.data.dealerRounds
         && request.resource.data.baseBet == resource.data.baseBet
         && request.resource.data.players.size() >= 1
-        && request.resource.data.players.size() <= 5;
+        && request.resource.data.players.size() <= 10;
       
       // Cho phép xóa room sau 24 giờ không hoạt động
       allow delete: if request.time > resource.data.createdAt + duration.value(24, 'h');
