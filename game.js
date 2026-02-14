@@ -125,6 +125,23 @@ function isBlackjack(cards) {
     return cards.length === 2 && calculateHand(cards) === 21;
 }
 
+// Check có 2 quân A hay không
+function hasTwoAces(cards) {
+    if (cards.length !== 2) return false;
+    const ranks = cards.map(card => card.split('-')[0]);
+    return ranks[0] === 'A' && ranks[1] === 'A';
+}
+
+// Check Ngũ Linh (5 lá không quá 21)
+function isFiveCardCharlie(cards) {
+    return cards.length === 5 && calculateHand(cards) <= 21;
+}
+
+// Check Ngũ Linh hoàn hảo (5 lá đúng 21)
+function isPerfectFive(cards) {
+    return cards.length === 5 && calculateHand(cards) === 21;
+}
+
 // Hàm tạo room ID
 function generateRoomId() {
     return Math.random().toString(36).substring(2, 8).toUpperCase();
@@ -691,6 +708,7 @@ async function dealInitialCards() {
         const roomData = roomDoc.data();
         let deck = roomData.deck;
         const players = roomData.players;
+        const dealerPlayerId = roomData.dealerPlayerId;
         
         // Chia 2 lá cho mỗi người chơi (kể cả dealer)
         for (let playerId in players) {
@@ -702,6 +720,8 @@ async function dealInitialCards() {
             let status = 'playing';
             if (isBlackjack(hand)) {
                 status = 'blackjack';
+            } else if (hasTwoAces(hand)) {
+                status = 'two-aces'; // Đặc biệt: 2 quân A
             }
             
             await currentRoom.ref.update({
@@ -709,6 +729,26 @@ async function dealInitialCards() {
                 [`players.${playerId}.handValue`]: handValue,
                 [`players.${playerId}.status`]: status
             });
+        }
+        
+        // Check dealer có blackjack hay 2 Aces không → End game luôn
+        const updatedRoomDoc = await currentRoom.ref.get();
+        const updatedRoomData = updatedRoomDoc.data();
+        const dealerHand = updatedRoomData.players[dealerPlayerId].hand;
+        const dealerHasBlackjack = isBlackjack(dealerHand);
+        const dealerHasTwoAces = hasTwoAces(dealerHand);
+        
+        if (dealerHasBlackjack || dealerHasTwoAces) {
+            // Dealer có blackjack hoặc 2 A → Ăn tất cả luôn!
+            await currentRoom.ref.update({
+                deck: deck,
+                status: 'dealer-wins-all',
+                revealedPlayers: Object.keys(players) // Reveal tất cả
+            });
+            
+            // Tính toán kết quả ngay
+            setTimeout(() => calculateDealerInstantWin(), 1000);
+            return;
         }
         
         await currentRoom.ref.update({
@@ -777,6 +817,12 @@ async function playerHit() {
             newStatus = 'bust';
         } else if (newHand.length >= 5) {
             // Five Card Charlie - tự động dừng nếu có 5 lá
+            if (newValue === 21) {
+                newStatus = 'perfect-five'; // Ngũ Linh 21 điểm
+            } else {
+                newStatus = 'five-charlie'; // Ngũ Linh
+            }
+            // Auto stand khi có 5 lá
             newStatus = 'stood';
         }
         
@@ -791,7 +837,7 @@ async function playerHit() {
         // 1. Đủ 5 lá (Five Card Charlie) → stood
         // 2. KHÔNG tự động chuyển khi bust để tránh lộ bài
         //    Người chơi phải tự ấn Stand hoặc đợi timeout
-        if (newStatus === 'stood' && newHand.length >= 5) {
+        if (newStatus === 'stood') {
             await startNextPlayerTurn();
         } else if (newStatus === 'bust' && newHand.length < 5) {
             // Nếu bust nhưng chưa đủ 5 lá, set timeout tự động Stand sau 15s
@@ -890,18 +936,30 @@ async function dealerHit() {
         const newHand = [...dealerPlayer.hand, newCard];
         const newValue = calculateHand(newHand);
         
+        let dealerStatus = dealerPlayer.status || 'playing';
+        
+        // Check special hands
+        if (newValue > 21) {
+            dealerStatus = 'bust';
+        } else if (newHand.length >= 5) {
+            // Dealer cũng có five-card charlie
+            if (newValue === 21) {
+                dealerStatus = 'perfect-five';
+            } else {
+                dealerStatus = 'five-charlie';
+            }
+        }
+        
         // Cập nhật bài
         await currentRoom.ref.update({
             [`players.${dealerPlayerId}.hand`]: newHand,
             [`players.${dealerPlayerId}.handValue`]: newValue,
+            [`players.${dealerPlayerId}.status`]: dealerStatus,
             deck: deck
         });
         
-        // Nếu quá 21 điểm (22 trở lên) -> Tự động lật bài luôn
-        if (newValue > 21) {
-             await currentRoom.ref.update({
-                [`players.${dealerPlayerId}.status`]: 'bust'
-            });
+        // Nếu quá 21 điểm (22 trở lên) hoặc đủ 5 lá -> Tự động lật bài luôn
+        if (newValue > 21 || newHand.length >= 5) {
             // Tự động lật bài sau 1s để người chơi kịp nhìn bài vừa rút
             setTimeout(revealAll, 1000);
         }
@@ -980,6 +1038,92 @@ async function dealerPlay() {
     }
 }
 
+// Dealer thắng tức thì (Blackjack hoặc 2 A ngay từ đầu)
+async function calculateDealerInstantWin() {
+    try {
+        const roomDoc = await currentRoom.ref.get();
+        const roomData = roomDoc.data();
+        const players = roomData.players;
+        const dealerPlayerId = roomData.dealerPlayerId;
+        const dealerPlayer = players[dealerPlayerId];
+        const dealerHand = dealerPlayer.hand;
+        
+        // Check xem dealer có gì đặc biệt
+        const hasBJ = isBlackjack(dealerHand);
+        const has2A = hasTwoAces(dealerHand);
+        const multiplier = has2A ? 2 : 1; // 2 quân A thì x2
+        
+        const results = {};
+        let dealerTotalWin = 0;
+        
+        for (let playerId in players) {
+            if (playerId === dealerPlayerId) {
+                results[playerId] = {
+                    result: 'dealer',
+                    chipsChange: 0 // Sẽ tính sau
+                };
+                continue;
+            }
+            
+            const player = players[playerId];
+            const bet = player.bet;
+            const playerHand = player.hand;
+            
+            // Check player cũng có blackjack hoặc special hand không
+            const playerHasBJ = isBlackjack(playerHand);
+            const playerHas2A = hasTwoAces(playerHand);
+            
+            let result = '';
+            let chipsChange = 0;
+            
+            if (playerHasBJ && hasBJ) {
+                // Cả hai blackjack = hòa
+                result = 'push';
+                chipsChange = 0;
+            } else if (playerHas2A && has2A) {
+                // Cả hai 2 A = hòa
+                result = 'push';
+                chipsChange = 0;
+            } else {
+                // Dealer thắng
+                result = 'lose';
+                chipsChange = -bet * multiplier; // x2 nếu dealer có 2 A
+                dealerTotalWin += bet * multiplier;
+            }
+            
+            results[playerId] = {
+                result: result,
+                chipsChange: chipsChange
+            };
+            
+            // Cập nhật chips
+            const newChips = player.chips + chipsChange;
+            await currentRoom.ref.update({
+                [`players.${playerId}.chips`]: newChips,
+                [`players.${playerId}.result`]: result,
+                [`players.${playerId}.chipsChange`]: chipsChange
+            });
+        }
+        
+        // Cập nhật dealer chips
+        const dealerNewChips = dealerPlayer.chips + dealerTotalWin;
+        await currentRoom.ref.update({
+            [`players.${dealerPlayerId}.chips`]: dealerNewChips,
+            [`players.${dealerPlayerId}.result`]: 'dealer',
+            [`players.${dealerPlayerId}.chipsChange`]: dealerTotalWin
+        });
+        
+        // Chuyển sang màn hình kết quả
+        await currentRoom.ref.update({
+            status: 'finished',
+            results: results
+        });
+        
+    } catch (error) {
+        console.error('Lỗi tính dealer instant win:', error);
+    }
+}
+
 // Tính toán kết quả
 async function calculateResults() {
     try {
@@ -1043,19 +1187,55 @@ async function calculateResults() {
                 // Blackjack thắng 3:2 (nếu dealer không blackjack)
                 result = 'blackjack';
                 chipsChange = Math.floor(bet * 1.5);
-            } else if (player.status === 'blackjack' && dealerBlackjack) {
-                // Cả hai blackjack = hòa
+            } else if (player.status === 'two-aces' && !hasTwoAces(dealerPlayer.hand)) {
+                // 2 quân A thắng x2 (nếu dealer không có 2 A)
+                result = 'two-aces';
+                chipsChange = bet * 2;
+            } else if ((player.status === 'blackjack' || player.status === 'two-aces') && 
+                       (dealerBlackjack || hasTwoAces(dealerPlayer.hand))) {
+                // Cả hai có hand đặc biệt giống nhau = hòa
                 result = 'push';
                 chipsChange = 0;
             } else if (dealerBust) {
                 // Dealer bust, người chơi thắng
-                // Luật: Nếu dealer quá 22 thì thua những người 21 điểm trở xuống
-                result = 'win';
-                chipsChange = bet;
+                // Check xem player có hand đặc biệt không
+                const playerHand = player.hand;
+                
+                if (isPerfectFive(playerHand)) {
+                    // 5 lá đúng 21 điểm (Ngũ Linh hoàn hảo) → x3
+                    result = 'perfect-five';
+                    chipsChange = bet * 3;
+                } else if (isFiveCardCharlie(playerHand)) {
+                    // 5 lá không quá 21 (Ngũ Linh) → x2
+                    result = 'five-charlie';
+                    chipsChange = bet * 2;
+                } else if (hasTwoAces(playerHand)) {
+                    // 2 quân A → x2
+                    result = 'two-aces';
+                    chipsChange = bet * 2;
+                } else {
+                    // Thắng thường
+                    result = 'win';
+                    chipsChange = bet;
+                }
             } else if (playerValue > dealerValue) {
                 // Người chơi điểm cao hơn
-                result = 'win';
-                chipsChange = bet;
+                // Check special hands
+                const playerHand = player.hand;
+                
+                if (isPerfectFive(playerHand)) {
+                    result = 'perfect-five';
+                    chipsChange = bet * 3;
+                } else if (isFiveCardCharlie(playerHand)) {
+                    result = 'five-charlie';
+                    chipsChange = bet * 2;
+                } else if (hasTwoAces(playerHand)) {
+                    result = 'two-aces';
+                    chipsChange = bet * 2;
+                } else {
+                    result = 'win';
+                    chipsChange = bet;
+                }
             } else if (playerValue < dealerValue) {
                 // Dealer điểm cao hơn
                 result = 'lose';
@@ -1114,8 +1294,20 @@ function showResultScreen(roomData) {
     // Hiển thị kết quả dealer
     const dealerResult = document.createElement('div');
     dealerResult.className = 'result-item';
+    
+    let dealerSpecial = '';
+    if (isBlackjack(dealerPlayer.hand)) {
+        dealerSpecial = ' ⭐(Blackjack)';
+    } else if (hasTwoAces(dealerPlayer.hand)) {
+        dealerSpecial = ' 🃏(Hai A x2)';
+    } else if (isPerfectFive(dealerPlayer.hand)) {
+        dealerSpecial = ' 🎊(Ngũ Linh 21)';
+    } else if (isFiveCardCharlie(dealerPlayer.hand)) {
+        dealerSpecial = ' 🎰(Ngũ Linh)';
+    }
+    
     dealerResult.innerHTML = `
-        <div class="result-player-name">🎩 Dealer: ${dealerPlayer.name}</div>
+        <div class="result-player-name">🎩 Dealer: ${dealerPlayer.name}${dealerSpecial}</div>
         <div class="result-detail">Điểm: ${dealerValue} ${dealerValue > 21 ? '(Bust)' : ''}</div>
         <div class="result-detail">Tổng chips: ${dealerPlayer.chips}</div>
     `;
@@ -1134,7 +1326,16 @@ function showResultScreen(roomData) {
         
         if (player.result === 'blackjack') {
             resultClass = 'blackjack';
-            resultText = '⭐ BLACKJACK!';
+            resultText = '⭐ BLACKJACK! (x1.5)';
+        } else if (player.result === 'perfect-five') {
+            resultClass = 'blackjack';
+            resultText = '🎊 NGŨ LINH 21 ĐIỂM! (x3)';
+        } else if (player.result === 'five-charlie') {
+            resultClass = 'win';
+            resultText = '🎰 NGŨ LINH! (x2)';
+        } else if (player.result === 'two-aces') {
+            resultClass = 'win';
+            resultText = '🃏 HAI QUÂN A! (x2)';
         } else if (player.result === 'win') {
             resultClass = 'win';
             resultText = '🎉 THẮNG!';
