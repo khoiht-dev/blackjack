@@ -399,6 +399,7 @@ async function startGame() {
 
         // Reset tất cả người chơi và đặt cược mặc định
         const baseBet = roomData.baseBet || 100;
+        const updates = {};
         
         for (let playerId in players) {
             const isDealer = playerId === dealerPlayerId;
@@ -406,20 +407,21 @@ async function startGame() {
             const bet = isDealer ? 0 : baseBet;
             const status = isDealer ? 'ready' : 'ready'; // Mọi người ready luôn vì cược đã fix
             
-            await currentRoom.ref.update({
-                [`players.${playerId}.hand`]: [],
-                [`players.${playerId}.handValue`]: 0,
-                [`players.${playerId}.bet`]: bet,
-                [`players.${playerId}.isDealer`]: isDealer,
-                [`players.${playerId}.status`]: status,
-                [`players.${playerId}.result`]: null,
-                [`players.${playerId}.chipsChange`]: null
-                // Không reset chips - giữ nguyên chips từ ván trước
-            });
+            updates[`players.${playerId}.hand`] = [];
+            updates[`players.${playerId}.handValue`] = 0;
+            updates[`players.${playerId}.bet`] = bet;
+            updates[`players.${playerId}.isDealer`] = isDealer;
+            updates[`players.${playerId}.status`] = status;
+            updates[`players.${playerId}.result`] = null;
+            updates[`players.${playerId}.chipsChange`] = null;
+            // Không reset chips - giữ nguyên chips từ ván trước
         }
         
+        // Apply tất cả updates một lần
+        await currentRoom.ref.update(updates);
+        
         // Chia bài luôn vì không cần chờ betting phase nữa
-        setTimeout(dealInitialCards, 1000); // Đợi 1s để UI update
+        setTimeout(() => dealInitialCards().catch(err => console.error('Lỗi chia bài:', err)), 1000); // Đợi 1s để UI update
         
     } catch (error) {
         console.error('Lỗi khi bắt đầu game:', error);
@@ -710,6 +712,8 @@ async function dealInitialCards() {
         const players = roomData.players;
         const dealerPlayerId = roomData.dealerPlayerId;
         
+        const updates = {};
+        
         // Chia 2 lá cho mỗi người chơi (kể cả dealer)
         for (let playerId in players) {
             const card1 = deck.pop();
@@ -724,12 +728,14 @@ async function dealInitialCards() {
                 status = 'two-aces'; // Đặc biệt: 2 quân A
             }
             
-            await currentRoom.ref.update({
-                [`players.${playerId}.hand`]: hand,
-                [`players.${playerId}.handValue`]: handValue,
-                [`players.${playerId}.status`]: status
-            });
+            updates[`players.${playerId}.hand`] = hand;
+            updates[`players.${playerId}.handValue`] = handValue;
+            updates[`players.${playerId}.status`] = status;
         }
+        
+        // Apply tất cả updates một lần
+        updates.deck = deck;
+        await currentRoom.ref.update(updates);
         
         // Check dealer có blackjack hay 2 Aces không → End game luôn
         const updatedRoomDoc = await currentRoom.ref.get();
@@ -741,18 +747,16 @@ async function dealInitialCards() {
         if (dealerHasBlackjack || dealerHasTwoAces) {
             // Dealer có blackjack hoặc 2 A → Ăn tất cả luôn!
             await currentRoom.ref.update({
-                deck: deck,
                 status: 'dealer-wins-all',
                 revealedPlayers: Object.keys(players) // Reveal tất cả
             });
             
             // Tính toán kết quả ngay
-            setTimeout(() => calculateDealerInstantWin(), 1000);
+            setTimeout(() => calculateDealerInstantWin().catch(err => console.error('Lỗi instant win:', err)), 1000);
             return;
         }
         
         await currentRoom.ref.update({
-            deck: deck,
             status: 'playing'
         });
         
