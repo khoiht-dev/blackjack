@@ -1010,37 +1010,24 @@ async function calculateResults() {
             let result = '';
             let chipsChange = 0;
             
-            // Check nếu player đã bị settle trước (dealer đã check và ăn tiền)
+            // Check nếu player đã bị settle trước (dealer đã check và ăn tiền SỚM)
             const wasSettledEarly = player.result === 'lose' && player.chipsChange !== null && player.chipsChange < 0;
             
             if (playerValue > 21 && dealerBust) {
-                // Cả hai cùng bust -> Hòa (Push)
-                result = 'push';
-                chipsChange = 0;
-                
-                // Nếu player đã bị ăn tiền trước đó, phải hoàn lại tiền
+                // Cả hai cùng bust
                 if (wasSettledEarly) {
-                    const refundAmount = Math.abs(player.chipsChange); // Số tiền đã bị trừ
-                    
-                    // Hoàn lại tiền cho player và trừ khỏi dealer
-                    const newPlayerChips = player.chips + refundAmount;
-                    const newDealerChips = dealerPlayer.chips - refundAmount;
-                    
-                    await currentRoom.ref.update({
-                        [`players.${playerId}.chips`]: newPlayerChips,
-                        [`players.${playerId}.result`]: 'push',
-                        [`players.${playerId}.chipsChange`]: 0,
-                        [`players.${dealerPlayerId}.chips`]: newDealerChips
-                    });
-                    
+                    // Dealer ĐÃ CHECK và ăn tiền TRƯỚC KHI dealer bust
+                    // → Player vẫn THUA, KHÔNG hoàn lại tiền
                     results[playerId] = {
-                        result: 'push',
-                        chipsChange: 0
+                        result: 'lose',
+                        chipsChange: player.chipsChange
                     };
-                    
-                    continue; // Đã xử lý xong, nhảy qua player tiếp theo
+                    continue; // Giữ nguyên kết quả thua
+                } else {
+                    // Dealer CHƯA CHECK, cả hai cùng bust → HÒA
+                    result = 'push';
+                    chipsChange = 0;
                 }
-                // Nếu chưa bị settle thì chỉ cần set result, chipsChange sẽ được xử lý ở dưới
             } else if (wasSettledEarly) {
                 // Player đã bị settle trước và dealer không bust -> giữ nguyên kết quả thua
                 results[playerId] = {
