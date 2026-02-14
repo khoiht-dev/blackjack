@@ -14,6 +14,27 @@ let unsubscribeRoom = null;
 const MAX_PLAYERS = 10;
 let autoStandTimeout = null; // Timeout để tự động Stand khi bust
 
+// Helper function để kiểm tra và xóa room nếu trống
+async function cleanupRoomIfEmpty(roomRef) {
+    try {
+        const roomDoc = await roomRef.get();
+        if (roomDoc.exists) {
+            const roomData = roomDoc.data();
+            const remainingPlayers = Object.keys(roomData.players || {}).length;
+            
+            if (remainingPlayers === 0) {
+                await roomRef.delete();
+                console.log('Room đã được xóa vì không còn người chơi');
+                return true;
+            }
+        }
+        return false;
+    } catch (error) {
+        console.error('Lỗi khi cleanup room:', error);
+        return false;
+    }
+}
+
 // Load settings từ localStorage khi trang load
 window.addEventListener('DOMContentLoaded', () => {
     loadSettings();
@@ -1154,6 +1175,13 @@ async function nextRound() {
             }
         }
         
+        // Kiểm tra nếu không còn người chơi nào sau khi xóa
+        const wasDeleted = await cleanupRoomIfEmpty(currentRoom.ref);
+        if (wasDeleted) {
+            returnToWelcome();
+            return;
+        }
+        
         // Giảm số vòng còn lại của dealer hiện tại
         const dealerRoundsRemaining = roomData.dealerRoundsRemaining - 1;
         
@@ -1188,15 +1216,8 @@ async function leaveRoom() {
             [`players.${currentPlayer.id}`]: firebase.firestore.FieldValue.delete()
         });
 
-        const roomDoc = await currentRoom.ref.get();
-        if (roomDoc.exists) {
-            const roomData = roomDoc.data();
-            const remainingPlayers = Object.keys(roomData.players || {}).length;
-            
-            if (remainingPlayers === 0) {
-                await currentRoom.ref.delete();
-            }
-        }
+        // Xóa room nếu không còn người chơi
+        await cleanupRoomIfEmpty(currentRoom.ref);
 
         returnToWelcome();
     } catch (error) {
@@ -1224,11 +1245,19 @@ function returnToWelcome() {
 }
 
 // Xử lý khi người dùng đóng tab
-window.addEventListener('beforeunload', () => {
+window.addEventListener('beforeunload', async () => {
     if (currentRoom.id && currentPlayer.id) {
-        currentRoom.ref.update({
-            [`players.${currentPlayer.id}`]: firebase.firestore.FieldValue.delete()
-        });
+        try {
+            // Xóa player khỏi room
+            await currentRoom.ref.update({
+                [`players.${currentPlayer.id}`]: firebase.firestore.FieldValue.delete()
+            });
+            
+            // Xóa room nếu không còn người chơi
+            await cleanupRoomIfEmpty(currentRoom.ref);
+        } catch (error) {
+            console.error('Lỗi khi cleanup room:', error);
+        }
     }
 });
 
