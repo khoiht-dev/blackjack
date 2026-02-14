@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Blackjack Online</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <!-- Màn hình chào -->
+        <div id="welcomeScreen" class="screen">
+            <h1>🎰 Blackjack Online</h1>
+            <div class="input-group">
+                <input type="text" id="playerName" placeholder="Nhập tên của bạn" maxlength="20">
+            </div>
+            <div class="input-group">
+                <label for="playerChips">Số chip khởi đầu:</label>
+                <input type="number" id="playerChips" value="1000" min="100" max="10000" step="100">
+            </div>
+            <div class="input-group">
+                <label for="dealerRounds">Số vòng mỗi người làm dealer:</label>
+                <input type="number" id="dealerRounds" value="3" min="1" max="10" step="1">
+                <small style="display: block; color: #666; margin-top: 5px;">
+                    Mỗi người sẽ làm dealer lần lượt theo số vòng này
+                </small>
+            </div>
+            <div class="input-group">
+                <label for="baseBet">Mức cược mặc định:</label>
+                <input type="number" id="baseBet" value="100" min="10" max="1000" step="10">
+                <small style="display: block; color: #666; margin-top: 5px;">
+                    Số chip cược mỗi ván cho tất cả người chơi
+                </small>
+            </div>
+            <div class="button-group">
+                <button onclick="createRoom()" class="btn btn-primary">Tạo Room Mới</button>
+                <button onclick="showJoinRoom()" class="btn btn-secondary">Tham Gia Room</button>
+            </div>
+            <div id="joinRoomSection" class="join-room-section" style="display: none;">
+                <input type="text" id="roomId" placeholder="Nhập mã room" maxlength="6">
+                <button onclick="joinRoom()" class="btn btn-primary">Vào Room</button>
+            </div>
+        </div>
+
+        <!-- Màn hình chờ -->
+        <div id="waitingScreen" class="screen" style="display: none;">
+            <h2>Phòng chơi</h2>
+            <div class="room-info">
+                <p>Mã room: <span id="currentRoomId" class="room-code"></span></p>
+                <button onclick="copyRoomId()" class="btn btn-small">📋 Sao chép</button>
+            </div>
+            <div class="players-list">
+                <h3>Người chơi trong phòng (tối đa 5):</h3>
+                <div id="playersList"></div>
+            </div>
+            <div class="button-group">
+                <button onclick="startGame()" id="startGameBtn" class="btn btn-primary">Bắt đầu Game</button>
+                <button onclick="leaveRoom()" class="btn btn-danger">Rời phòng</button>
+            </div>
+        </div>
+
+        <!-- Màn hình chơi game -->
+        <div id="gameScreen" class="screen" style="display: none;">
+            <div class="game-header">
+                <div class="room-code-small">Room: <span id="gameRoomCode"></span></div>
+                <button onclick="leaveRoom()" class="btn btn-danger btn-small">Rời phòng</button>
+            </div>
+
+            <!-- Players Area (bao gồm dealer) -->
+            <div class="players-area" id="playersArea">
+                <!-- Các player sẽ được thêm động -->
+            </div>
+
+            <!-- Betting Area (cho người chơi hiện tại) -->
+            <div class="betting-area" id="bettingArea" style="display: none;">
+                <h4>Đặt cược của bạn</h4>
+                <div class="chips-display">
+                    Số chip: <span id="currentChips" class="chips-amount">1000</span>
+                </div>
+                <div class="bet-input">
+                    <input type="number" id="betAmount" min="10" step="10" value="50" placeholder="Số chip đặt cược">
+                </div>
+                <div class="quick-bet-buttons">
+                    <button onclick="quickBet(10)" class="btn btn-chip">10</button>
+                    <button onclick="quickBet(25)" class="btn btn-chip">25</button>
+                    <button onclick="quickBet(50)" class="btn btn-chip">50</button>
+                    <button onclick="quickBet(100)" class="btn btn-chip">100</button>
+                    <button onclick="quickBet(250)" class="btn btn-chip">250</button>
+                </div>
+                <button onclick="placeBet()" class="btn btn-primary">Đặt cược</button>
+            </div>
+
+            <!-- Action Buttons -->
+            <div class="action-buttons" id="actionButtons" style="display: none;">
+                <button onclick="playerHit()" class="btn btn-success" id="hitBtn">Hit (Rút bài)</button>
+                <button onclick="playerStand()" class="btn btn-warning" id="standBtn">Stand (Dừng)</button>
+            </div>
+
+            <!-- Dealer Checking Controls -->
+            <div class="dealer-checking-area" id="dealerCheckingArea" style="display: none;">
+                <h4>🎩 Lượt của Dealer kiểm tra</h4>
+                <div id="checkPlayersButtons" class="button-group">
+                    <!-- Buttons sẽ được thêm động -->
+                </div>
+            </div>
+
+            <!-- Game Status -->
+            <div class="game-status-area">
+                <p id="gameStatus" class="game-status-text">Chờ người chơi đặt cược...</p>
+            </div>
+        </div>
+
+        <!-- Màn hình kết quả -->
+        <div id="resultScreen" class="screen" style="display: none;">
+            <h2>🎰 Kết quả ván chơi</h2>
+            <div class="results-container" id="resultsContainer">
+                <!-- Kết quả sẽ được thêm động -->
+            </div>
+            <div class="button-group">
+                <button onclick="nextRound()" class="btn btn-primary" id="nextRoundBtn">Ván tiếp theo</button>
+                <button onclick="leaveRoom()" class="btn btn-danger">Rời phòng</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+    
+    <!-- Firebase Credentials (Load trước firebase-config.js) -->
+    <script src="firebase-credentials.js"></script>
+    
+    <!-- Game Logic -->
+    <script src="firebase-config.js"></script>
+    <script src="game.js"></script>
+</body>
+</html>

@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Firebase Test</title>
+    <style>
+        body {
+            font-family: monospace;
+            padding: 20px;
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        button {
+            padding: 10px 20px;
+            margin: 5px;
+            cursor: pointer;
+        }
+        #log {
+            background: #f0f0f0;
+            padding: 10px;
+            border-radius: 5px;
+            margin-top: 20px;
+            white-space: pre-wrap;
+            font-size: 12px;
+        }
+        .success { color: green; }
+        .error { color: red; }
+        .info { color: blue; }
+    </style>
+</head>
+<body>
+    <h1>🔥 Firebase Connection Test</h1>
+    
+    <div>
+        <button onclick="testFirebaseInit()">1. Test Firebase Init</button>
+        <button onclick="testFirestoreConnection()">2. Test Firestore Connection</button>
+        <button onclick="testCreateDocument()">3. Test Create Document</button>
+        <button onclick="testReadDocument()">4. Test Read Document</button>
+        <button onclick="clearLog()">Clear Log</button>
+    </div>
+
+    <div id="log"></div>
+
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+    
+    <!-- Firebase Credentials -->
+    <script src="firebase-credentials.js"></script>
+
+    <script>
+        const logEl = document.getElementById('log');
+        
+        function log(message, type = 'info') {
+            const timestamp = new Date().toLocaleTimeString();
+            const entry = document.createElement('div');
+            entry.className = type;
+            entry.textContent = `[${timestamp}] ${message}`;
+            logEl.appendChild(entry);
+            logEl.scrollTop = logEl.scrollHeight;
+        }
+
+        function clearLog() {
+            logEl.innerHTML = '';
+        }
+
+        // Test 1: Firebase Init
+        function testFirebaseInit() {
+            log('=== Test 1: Firebase Initialization ===', 'info');
+            
+            try {
+                if (typeof firebase === 'undefined') {
+                    log('❌ Firebase SDK không được load!', 'error');
+                    log('Kiểm tra kết nối internet và Firebase CDN', 'error');
+                    return;
+                }
+                log('✅ Firebase SDK đã load', 'success');
+
+                if (typeof window.FIREBASE_CREDENTIALS === 'undefined') {
+                    log('❌ FIREBASE_CREDENTIALS không tìm thấy!', 'error');
+                    log('Kiểm tra file firebase-credentials.js', 'error');
+                    return;
+                }
+                log('✅ FIREBASE_CREDENTIALS đã load', 'success');
+                log('Config: ' + JSON.stringify(window.FIREBASE_CREDENTIALS, null, 2), 'info');
+
+                if (!firebase.apps.length) {
+                    firebase.initializeApp(window.FIREBASE_CREDENTIALS);
+                    log('✅ Firebase đã khởi tạo thành công!', 'success');
+                } else {
+                    log('✅ Firebase đã được khởi tạo trước đó', 'success');
+                }
+
+                window.db = firebase.firestore();
+                log('✅ Firestore đã được khởi tạo', 'success');
+                log('', 'info');
+                log('👉 Tiếp theo: Click "2. Test Firestore Connection"', 'info');
+
+            } catch (error) {
+                log('❌ Lỗi: ' + error.message, 'error');
+                log('Stack: ' + error.stack, 'error');
+            }
+        }
+
+        // Test 2: Firestore Connection
+        async function testFirestoreConnection() {
+            log('=== Test 2: Firestore Connection ===', 'info');
+            
+            try {
+                if (!window.db) {
+                    log('❌ Firestore chưa được khởi tạo! Chạy Test 1 trước.', 'error');
+                    return;
+                }
+
+                log('Đang kiểm tra kết nối Firestore...', 'info');
+                
+                // Thử đọc một collection
+                const snapshot = await db.collection('_test_connection').limit(1).get();
+                log('✅ Kết nối Firestore thành công!', 'success');
+                log('Số documents tìm thấy: ' + snapshot.size, 'info');
+                log('', 'info');
+                log('👉 Tiếp theo: Click "3. Test Create Document"', 'info');
+
+            } catch (error) {
+                log('❌ Lỗi kết nối Firestore: ' + error.message, 'error');
+                log('Code: ' + error.code, 'error');
+                
+                if (error.code === 'permission-denied') {
+                    log('', 'error');
+                    log('🔒 LỖI PERMISSION DENIED!', 'error');
+                    log('Nguyên nhân: Firestore Security Rules chặn truy cập', 'error');
+                    log('', 'error');
+                    log('Giải pháp:', 'info');
+                    log('1. Truy cập: https://console.firebase.google.com/', 'info');
+                    log('2. Chọn project: blackjack-36f3d', 'info');
+                    log('3. Vào Firestore Database', 'info');
+                    log('4. Tab "Rules"', 'info');
+                    log('5. Thay đổi rules thành:', 'info');
+                    log('', 'info');
+                    log('rules_version = \'2\';', 'info');
+                    log('service cloud.firestore {', 'info');
+                    log('  match /databases/{database}/documents {', 'info');
+                    log('    match /{document=**} {', 'info');
+                    log('      allow read, write: if true;', 'info');
+                    log('    }', 'info');
+                    log('  }', 'info');
+                    log('}', 'info');
+                    log('', 'info');
+                    log('6. Click "Publish"', 'info');
+                } else if (error.message.includes('Missing or insufficient permissions')) {
+                    log('', 'error');
+                    log('Firestore Database có thể chưa được tạo!', 'error');
+                    log('Hãy tạo Firestore Database trong Firebase Console', 'error');
+                } else {
+                    log('Stack: ' + error.stack, 'error');
+                }
+            }
+        }
+
+        // Test 3: Create Document
+        async function testCreateDocument() {
+            log('=== Test 3: Create Document ===', 'info');
+            
+            try {
+                if (!window.db) {
+                    log('❌ Firestore chưa được khởi tạo! Chạy Test 1 trước.', 'error');
+                    return;
+                }
+
+                const testId = 'TEST_' + Date.now();
+                log('Đang tạo test document với ID: ' + testId, 'info');
+
+                const testData = {
+                    message: 'Hello from Blackjack Game!',
+                    timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+                    testId: testId
+                };
+
+                await db.collection('_test_rooms').doc(testId).set(testData);
+                log('✅ Tạo document thành công!', 'success');
+                log('Data: ' + JSON.stringify(testData, null, 2), 'info');
+                log('', 'info');
+                log('👉 Tiếp theo: Click "4. Test Read Document"', 'info');
+
+                // Lưu testId để test đọc
+                window.lastTestId = testId;
+
+            } catch (error) {
+                log('❌ Lỗi tạo document: ' + error.message, 'error');
+                log('Code: ' + error.code, 'error');
+                log('Stack: ' + error.stack, 'error');
+            }
+        }
+
+        // Test 4: Read Document
+        async function testReadDocument() {
+            log('=== Test 4: Read Document ===', 'info');
+            
+            try {
+                if (!window.db) {
+                    log('❌ Firestore chưa được khởi tạo! Chạy Test 1 trước.', 'error');
+                    return;
+                }
+
+                if (!window.lastTestId) {
+                    log('❌ Chưa có test document! Chạy Test 3 trước.', 'error');
+                    return;
+                }
+
+                log('Đang đọc test document: ' + window.lastTestId, 'info');
+
+                const doc = await db.collection('_test_rooms').doc(window.lastTestId).get();
+                
+                if (doc.exists) {
+                    log('✅ Đọc document thành công!', 'success');
+                    log('Data: ' + JSON.stringify(doc.data(), null, 2), 'info');
+                    log('', 'info');
+                    log('🎉 TẤT CẢ TESTS ĐỀU PASS!', 'success');
+                    log('Firebase và Firestore hoạt động bình thường.', 'success');
+                    log('', 'info');
+                    log('Bây giờ bạn có thể chơi game Blackjack!', 'success');
+                } else {
+                    log('❌ Document không tồn tại!', 'error');
+                }
+
+            } catch (error) {
+                log('❌ Lỗi đọc document: ' + error.message, 'error');
+                log('Code: ' + error.code, 'error');
+                log('Stack: ' + error.stack, 'error');
+            }
+        }
+
+        // Auto-run Test 1 khi load trang
+        window.addEventListener('load', () => {
+            setTimeout(() => {
+                log('🚀 Tự động chạy Test 1...', 'info');
+                testFirebaseInit();
+            }, 500);
+        });
+    </script>
+</body>
+</html>
